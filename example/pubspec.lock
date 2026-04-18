@@ -104,6 +104,13 @@ packages:
       url: "https://pub.flutter-io.cn"
     source: hosted
     version: "2.2.0"
+  fftea:
+    dependency: transitive
+    description:
+      path: "../fftea"
+      relative: true
+    source: path
+    version: "1.5.0+1"
   file:
     dependency: transitive
     description:

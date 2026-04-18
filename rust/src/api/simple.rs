@@ -1,14 +1,25 @@
 use base64::prelude::{Engine, BASE64_URL_SAFE_NO_PAD};
-use std::fs::File;
+use rubato::Resampler;
+use rustfft::num_complex::{Complex, Complex64};
+use rustfft::num_traits::Zero;
 use rusty_chromaprint::{Configuration, FingerprintCompressor, Fingerprinter};
+use std::fs::File;
 use symphonia::core::codecs::{DecoderOptions, CODEC_TYPE_NULL};
 use symphonia::core::errors::Error;
 use symphonia::core::formats::FormatOptions;
 use symphonia::core::io::MediaSourceStream;
 use symphonia::core::meta::MetadataOptions;
 use symphonia::core::probe::Hint;
-use std::io::Read;
 use symphonia::core::audio::SampleBuffer;
+use std::io::Read;
+
+const MIN_SAMPLE_RATE: u32 = 1000;
+const MAX_BUFFER_SIZE: usize = 1024 * 32;
+const DEFAULT_TARGET_SAMPLE_RATE: u32 = 11025;
+const DEFAULT_FRAME_SIZE: usize = 4096;
+const DEFAULT_FRAME_OVERLAP: usize = DEFAULT_FRAME_SIZE - DEFAULT_FRAME_SIZE / 3;
+const DEFAULT_FRAME_STRIDE: usize = DEFAULT_FRAME_SIZE - DEFAULT_FRAME_OVERLAP;
+const DEFAULT_SPECTRUM_BINS: usize = 1 + DEFAULT_FRAME_SIZE / 2;
 
 #[flutter_rust_bridge::frb(sync)]
 pub fn greet(name: String) -> String {
@@ -107,6 +118,23 @@ pub fn get_fingerprint_raw(path: String, sample_rate: u32, channels: u32) -> Res
     Ok(BASE64_URL_SAFE_NO_PAD.encode(compressed))
 }
 
+#[flutter_rust_bridge::frb(sync)]
+pub fn get_processed_pcm(path: String, sample_rate: u32, channels: u32) -> Result<Vec<f64>, String> {
+    let samples = read_pcm_i16(&path)?;
+    preprocess_pcm_samples(&samples, sample_rate, channels)
+}
+
+#[flutter_rust_bridge::frb(sync)]
+pub fn get_fft_spectrum_baseline(
+    path: String,
+    sample_rate: u32,
+    channels: u32,
+) -> Result<Vec<f64>, String> {
+    let samples = read_pcm_i16(&path)?;
+    let processed = preprocess_pcm_samples(&samples, sample_rate, channels)?;
+    Ok(compute_fft_spectrum(&processed))
+}
+
 fn get_fingerprint_words(
     path: String,
     sample_rate: u32,
@@ -128,6 +156,234 @@ fn get_fingerprint_words(
     
     let fingerprint = printer.fingerprint();
     Ok(fingerprint.to_vec())
+}
+
+fn read_pcm_i16(path: &str) -> Result<Vec<i16>, String> {
+    let mut file = File::open(path).map_err(|e| format!("Failed to open file: {}", e))?;
+    let mut data = Vec::new();
+    file.read_to_end(&mut data)
+        .map_err(|e| format!("Failed to read file: {}", e))?;
+
+    if data.len() % 2 != 0 {
+        return Err("PCM data length must be divisible by 2".to_string());
+    }
+
+    Ok(data
+        .chunks_exact(2)
+        .map(|chunk| i16::from_le_bytes([chunk[0], chunk[1]]))
+        .collect())
+}
+
+fn preprocess_pcm_samples(
+    samples: &[i16],
+    sample_rate: u32,
+    channels: u32,
+) -> Result<Vec<f64>, String> {
+    if channels == 0 {
+        return Err("At least one channel is required".to_string());
+    }
+
+    if sample_rate <= MIN_SAMPLE_RATE {
+        return Err(format!(
+            "Sample rate is too low. Required min. {}",
+            MIN_SAMPLE_RATE
+        ));
+    }
+
+    let channels_usize: usize = channels
+        .try_into()
+        .map_err(|_| "Channel count is too large".to_string())?;
+    if samples.len() % channels_usize != 0 {
+        return Err("PCM sample count is not divisible by channel count".to_string());
+    }
+
+    let mut buffer = vec![0i16; MAX_BUFFER_SIZE].into_boxed_slice();
+    let mut buffer_offset = 0usize;
+    let mut resampler_input = Vec::<f64>::new();
+    let mut processed = Vec::<f64>::new();
+
+    let mut resampler = if sample_rate != DEFAULT_TARGET_SAMPLE_RATE {
+        Some(
+            rubato::SincFixedIn::new(
+                DEFAULT_TARGET_SAMPLE_RATE as f64 / sample_rate as f64,
+                1.0,
+                rubato::SincInterpolationParameters {
+                    sinc_len: 16,
+                    f_cutoff: 0.8,
+                    oversampling_factor: 128,
+                    interpolation: rubato::SincInterpolationType::Nearest,
+                    window: rubato::WindowFunction::Blackman,
+                },
+                MAX_BUFFER_SIZE,
+                1,
+            )
+            .map_err(|e| format!("Cannot construct resampler: {}", e))?,
+        )
+    } else {
+        None
+    };
+
+    let available_frames = samples.len() / channels_usize;
+    let mut frame_index = 0usize;
+
+    while frame_index < available_frames {
+        let available_space = buffer.len() - buffer_offset;
+        let frames_to_copy = (available_frames - frame_index).min(available_space);
+
+        let start = frame_index * channels_usize;
+        let end = start + frames_to_copy * channels_usize;
+        let input = &samples[start..end];
+
+        match channels_usize {
+            1 => {
+                for &sample in input {
+                    buffer[buffer_offset] = sample;
+                    buffer_offset += 1;
+                }
+            }
+            2 => {
+                for frame in input.chunks_exact(2) {
+                    buffer[buffer_offset] =
+                        ((i32::from(frame[0]) + i32::from(frame[1])) / 2) as i16;
+                    buffer_offset += 1;
+                }
+            }
+            _ => {
+                for frame in input.chunks_exact(channels_usize) {
+                    let sum: i32 = frame.iter().copied().map(i32::from).sum();
+                    let avg = sum / frame.len() as i32;
+                    buffer[buffer_offset] = avg as i16;
+                    buffer_offset += 1;
+                }
+            }
+        }
+
+        frame_index += frames_to_copy;
+
+        if buffer_offset == buffer.len() {
+            flush_preprocess_buffer(
+                &buffer[..buffer_offset],
+                false,
+                &mut resampler_input,
+                &mut processed,
+                resampler.as_mut(),
+            )?;
+            buffer_offset = 0;
+        }
+    }
+
+    if buffer_offset > 0 {
+        flush_preprocess_buffer(
+            &buffer[..buffer_offset],
+            true,
+            &mut resampler_input,
+            &mut processed,
+            resampler.as_mut(),
+        )?;
+    }
+
+    Ok(processed)
+}
+
+fn flush_preprocess_buffer(
+    buffer: &[i16],
+    is_end: bool,
+    resampler_input: &mut Vec<f64>,
+    output: &mut Vec<f64>,
+    resampler: Option<&mut rubato::SincFixedIn<f64>>,
+) -> Result<(), String> {
+    for &sample in buffer {
+        resampler_input.push(f64::from(sample) / f64::from(i16::MAX));
+    }
+
+    if let Some(resampler) = resampler {
+        let default_input_frames = resampler.input_frames_next();
+        let mut chunk_output = vec![0.0; resampler.output_frames_max()];
+
+        while !resampler_input.is_empty() {
+            if resampler_input.len() < resampler.input_frames_next() {
+                if is_end {
+                    resampler
+                        .set_chunk_size(resampler_input.len())
+                        .map_err(|e| format!("Cannot update resampler chunk size: {}", e))?;
+                } else {
+                    break;
+                }
+            }
+
+            let required_input = resampler.input_frames_next();
+            chunk_output.resize(resampler.output_frames_next(), 0.0);
+            let (read_samples, written_samples) = resampler
+                .process_into_buffer(
+                    &[&resampler_input[..required_input]],
+                    std::slice::from_mut(&mut chunk_output),
+                    None,
+                )
+                .map_err(|e| format!("Cannot resample audio: {}", e))?;
+            resampler_input.drain(..read_samples);
+            output.extend_from_slice(&chunk_output[..written_samples]);
+
+            if is_end {
+                resampler
+                    .set_chunk_size(default_input_frames)
+                    .map_err(|e| format!("Cannot restore resampler chunk size: {}", e))?;
+            }
+        }
+    } else {
+        output.extend_from_slice(resampler_input);
+        resampler_input.clear();
+    }
+
+    Ok(())
+}
+
+fn compute_fft_spectrum(samples: &[f64]) -> Vec<f64> {
+    if samples.len() < DEFAULT_FRAME_SIZE {
+        return Vec::new();
+    }
+
+    let frame_count = 1 + (samples.len() - DEFAULT_FRAME_SIZE) / DEFAULT_FRAME_STRIDE;
+    let mut output = Vec::with_capacity(frame_count * DEFAULT_SPECTRUM_BINS);
+    let mut planner = rustfft::FftPlanner::<f64>::new();
+    let fft_plan = planner.plan_fft_forward(DEFAULT_FRAME_SIZE);
+    let mut fft_buffer = vec![Complex64::zero(); DEFAULT_FRAME_SIZE].into_boxed_slice();
+    let mut fft_scratch = vec![Complex::zero(); fft_plan.get_inplace_scratch_len()].into_boxed_slice();
+    let window = make_hamming_window(DEFAULT_FRAME_SIZE, 1.0);
+
+    for frame_start in (0..=(samples.len() - DEFAULT_FRAME_SIZE)).step_by(DEFAULT_FRAME_STRIDE) {
+        let frame = &samples[frame_start..frame_start + DEFAULT_FRAME_SIZE];
+        for (i, (output_sample, input_sample)) in fft_buffer.iter_mut().zip(frame).enumerate() {
+            output_sample.re = input_sample * window[i];
+            output_sample.im = 0.0;
+        }
+
+        fft_plan.process_with_scratch(&mut fft_buffer, &mut fft_scratch);
+
+        for i in 0..DEFAULT_FRAME_SIZE / 2 {
+            output.push(fft_buffer[i].norm_sqr());
+        }
+        output.push(0.0);
+    }
+
+    output
+}
+
+fn make_hamming_window(size: usize, scale: f64) -> Vec<f64> {
+    let mut window = Vec::with_capacity(size);
+    if size == 1 {
+        window.push(scale);
+        return window;
+    }
+
+    for i in 0..size {
+        window.push(
+            scale
+                * (0.54
+                    - 0.46
+                        * f64::cos(2.0 * std::f64::consts::PI * i as f64 / (size as f64 - 1.0))),
+        );
+    }
+    window
 }
 
 #[flutter_rust_bridge::frb(init)]

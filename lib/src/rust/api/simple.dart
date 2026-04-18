@@ -6,7 +6,7 @@
 import '../frb_generated.dart';
 import 'package:flutter_rust_bridge/flutter_rust_bridge_for_generated.dart';
 
-// These functions are ignored because they are not marked as `pub`: `get_fingerprint_words`
+// These functions are ignored because they are not marked as `pub`: `compute_fft_spectrum`, `flush_preprocess_buffer`, `get_fingerprint_words`, `make_hamming_window`, `preprocess_pcm_samples`, `read_pcm_i16`
 
 String greet({required String name}) =>
     RustLib.instance.api.crateApiSimpleGreet(name: name);
@@ -21,6 +21,26 @@ Future<String> getFingerprintRaw({
   required int sampleRate,
   required int channels,
 }) => RustLib.instance.api.crateApiSimpleGetFingerprintRaw(
+  path: path,
+  sampleRate: sampleRate,
+  channels: channels,
+);
+
+Float64List getProcessedPcm({
+  required String path,
+  required int sampleRate,
+  required int channels,
+}) => RustLib.instance.api.crateApiSimpleGetProcessedPcm(
+  path: path,
+  sampleRate: sampleRate,
+  channels: channels,
+);
+
+Float64List getFftSpectrumBaseline({
+  required String path,
+  required int sampleRate,
+  required int channels,
+}) => RustLib.instance.api.crateApiSimpleGetFftSpectrumBaseline(
   path: path,
   sampleRate: sampleRate,
   channels: channels,
