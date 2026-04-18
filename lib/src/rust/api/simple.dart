@@ -26,6 +26,16 @@ Future<String> getFingerprintRaw({
   channels: channels,
 );
 
+Uint32List getFingerprintWordsBaseline({
+  required String path,
+  required int sampleRate,
+  required int channels,
+}) => RustLib.instance.api.crateApiSimpleGetFingerprintWordsBaseline(
+  path: path,
+  sampleRate: sampleRate,
+  channels: channels,
+);
+
 Float64List getProcessedPcm({
   required String path,
   required int sampleRate,

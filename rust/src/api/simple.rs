@@ -123,6 +123,15 @@ pub fn get_fingerprint_raw(path: String, sample_rate: u32, channels: u32) -> Res
 }
 
 #[flutter_rust_bridge::frb(sync)]
+pub fn get_fingerprint_words_baseline(
+    path: String,
+    sample_rate: u32,
+    channels: u32,
+) -> Result<Vec<u32>, String> {
+    get_fingerprint_words(path, sample_rate, channels)
+}
+
+#[flutter_rust_bridge::frb(sync)]
 pub fn get_processed_pcm(path: String, sample_rate: u32, channels: u32) -> Result<Vec<f64>, String> {
     let samples = read_pcm_i16(&path)?;
     preprocess_pcm_samples(&samples, sample_rate, channels)

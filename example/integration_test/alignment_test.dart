@@ -72,6 +72,36 @@ void main() {
       meanAbsDiff: 1e-8,
     );
   });
+
+  test('subfingerprints match Rust baseline on decoded PCM fixture', () {
+    const path = '../test/test_decoded.pcm';
+    const sampleRate = 44100;
+    const channels = 2;
+
+    final processed = getProcessedPcm(
+      path: path,
+      sampleRate: sampleRate,
+      channels: channels,
+    );
+
+    final spectrum = ChromaprintFft().transformFlattened(processed);
+    final chroma = ChromaprintChroma().transformFlattened(spectrum);
+    final filtered = ChromaprintChromaFilter().transformFlattened(chroma);
+    final normalized = const ChromaprintChromaNormalizer().transformFlattened(
+      filtered,
+    );
+    final fingerprint = ChromaprintFingerprintCalculator().transformFlattened(
+      normalized,
+    );
+
+    final rustFingerprint = getFingerprintWordsBaseline(
+      path: path,
+      sampleRate: sampleRate,
+      channels: channels,
+    );
+
+    expect(fingerprint, rustFingerprint);
+  });
 }
 
 void _expectClose(
