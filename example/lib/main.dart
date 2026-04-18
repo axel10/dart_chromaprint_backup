@@ -17,6 +17,7 @@ class MyApp extends StatefulWidget {
 class _MyAppState extends State<MyApp> {
   String? _filePath;
   int? _pcmLength;
+  double _maxSeconds = 10.0; // Default to 10 seconds
   bool _isLoading = false;
 
   Future<void> _pickAndProcessFile() async {
@@ -33,7 +34,7 @@ class _MyAppState extends State<MyApp> {
 
       try {
         // Call the new pure Dart interface
-        final length = getPcmLength(path: _filePath!);
+        final length = getPcmLength(path: _filePath!, maxSeconds: _maxSeconds);
         setState(() {
           _pcmLength = length;
         });
@@ -82,7 +83,23 @@ class _MyAppState extends State<MyApp> {
                           )),
                 ] else
                   const Text('Select an audio file to see its PCM length'),
-                const SizedBox(height: 40),
+                const SizedBox(height: 30),
+                Text('Max Seconds: ${_maxSeconds.toInt()}s'),
+                Slider(
+                  value: _maxSeconds,
+                  min: 1,
+                  max: 120,
+                  divisions: 119,
+                  label: '${_maxSeconds.toInt()}s',
+                  onChanged: _isLoading
+                      ? null
+                      : (value) {
+                          setState(() {
+                            _maxSeconds = value;
+                          });
+                        },
+                ),
+                const SizedBox(height: 20),
                 ElevatedButton.icon(
                   onPressed: _isLoading ? null : _pickAndProcessFile,
                   icon: const Icon(Icons.audio_file),

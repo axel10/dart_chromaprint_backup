@@ -9,5 +9,7 @@ import 'package:flutter_rust_bridge/flutter_rust_bridge_for_generated.dart';
 String greet({required String name}) =>
     RustLib.instance.api.crateApiSimpleGreet(name: name);
 
-Float32List getAudioPcm({required String path}) =>
-    RustLib.instance.api.crateApiSimpleGetAudioPcm(path: path);
+Float32List getAudioPcm({required String path, double? maxSeconds}) => RustLib
+    .instance
+    .api
+    .crateApiSimpleGetAudioPcm(path: path, maxSeconds: maxSeconds);

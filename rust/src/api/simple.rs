@@ -13,7 +13,7 @@ pub fn greet(name: String) -> String {
 }
 
 #[flutter_rust_bridge::frb(sync)]
-pub fn get_audio_pcm(path: String) -> Result<Vec<f32>, String> {
+pub fn get_audio_pcm(path: String, max_seconds: Option<f64>) -> Result<Vec<f32>, String> {
     let src = File::open(&path).map_err(|e| format!("Failed to open file: {}", e))?;
     let mss = MediaSourceStream::new(Box::new(src), Default::default());
 
@@ -46,6 +46,7 @@ pub fn get_audio_pcm(path: String) -> Result<Vec<f32>, String> {
 
     let track_id = track.id;
     let mut samples = Vec::new();
+    let mut total_samples_limit = None;
 
     loop {
         let packet = match format.next_packet() {
@@ -64,12 +65,30 @@ pub fn get_audio_pcm(path: String) -> Result<Vec<f32>, String> {
             Err(err) => return Err(format!("Error decoding packet: {}", err)),
         };
 
+        if total_samples_limit.is_none() {
+            if let Some(secs) = max_seconds {
+                let spec = decoded.spec();
+                total_samples_limit = Some((secs * spec.rate as f64 * spec.channels.count() as f64) as usize);
+            }
+        }
+
         let mut sample_buf = SampleBuffer::<f32>::new(
             decoded.capacity() as u64,
             *decoded.spec(),
         );
         sample_buf.copy_interleaved_ref(decoded);
-        samples.extend_from_slice(sample_buf.samples());
+        
+        let new_samples = sample_buf.samples();
+        if let Some(limit) = total_samples_limit {
+            let current_len = samples.len();
+            if current_len + new_samples.len() >= limit {
+                let take = limit - current_len;
+                samples.extend_from_slice(&new_samples[..take]);
+                break;
+            }
+        }
+        
+        samples.extend_from_slice(new_samples);
     }
 
     Ok(samples)
