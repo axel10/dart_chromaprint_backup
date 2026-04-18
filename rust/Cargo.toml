@@ -1,0 +1,15 @@
+[package]
+name = "dart_chromaprint"
+version = "0.1.0"
+edition = "2021"
+
+[lib]
+crate-type = ["cdylib", "staticlib"]
+
+[dependencies]
+flutter_rust_bridge = "=2.11.1"
+rusty-chromaprint = "0.3.0"
+symphonia = { version = "0.5.5", features = ["all"] }
+
+[lints.rust]
+unexpected_cfgs = { level = "warn", check-cfg = ['cfg(frb_expand)'] }
