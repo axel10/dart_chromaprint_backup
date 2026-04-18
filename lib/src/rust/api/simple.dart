@@ -26,12 +26,32 @@ Future<String> getFingerprintRaw({
   channels: channels,
 );
 
+Future<String> getFingerprintRawFromPcm({
+  required List<int> samples,
+  required int sampleRate,
+  required int channels,
+}) => RustLib.instance.api.crateApiSimpleGetFingerprintRawFromPcm(
+  samples: samples,
+  sampleRate: sampleRate,
+  channels: channels,
+);
+
 Uint32List getFingerprintWordsBaseline({
   required String path,
   required int sampleRate,
   required int channels,
 }) => RustLib.instance.api.crateApiSimpleGetFingerprintWordsBaseline(
   path: path,
+  sampleRate: sampleRate,
+  channels: channels,
+);
+
+Uint32List getFingerprintWordsFromPcm({
+  required List<int> samples,
+  required int sampleRate,
+  required int channels,
+}) => RustLib.instance.api.crateApiSimpleGetFingerprintWordsFromPcm(
+  samples: samples,
   sampleRate: sampleRate,
   channels: channels,
 );

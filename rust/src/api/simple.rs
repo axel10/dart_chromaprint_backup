@@ -122,6 +122,19 @@ pub fn get_fingerprint_raw(path: String, sample_rate: u32, channels: u32) -> Res
     Ok(BASE64_URL_SAFE_NO_PAD.encode(compressed))
 }
 
+#[flutter_rust_bridge::frb]
+pub fn get_fingerprint_raw_from_pcm(
+    samples: Vec<i16>,
+    sample_rate: u32,
+    channels: u32,
+) -> Result<String, String> {
+    let fingerprint = get_fingerprint_words_from_pcm(samples, sample_rate, channels)?;
+    let config = Configuration::preset_test2();
+    let compressor = FingerprintCompressor::from(&config);
+    let compressed = compressor.compress(&fingerprint);
+    Ok(BASE64_URL_SAFE_NO_PAD.encode(compressed))
+}
+
 #[flutter_rust_bridge::frb(sync)]
 pub fn get_fingerprint_words_baseline(
     path: String,
@@ -129,6 +142,22 @@ pub fn get_fingerprint_words_baseline(
     channels: u32,
 ) -> Result<Vec<u32>, String> {
     get_fingerprint_words(path, sample_rate, channels)
+}
+
+#[flutter_rust_bridge::frb(sync)]
+pub fn get_fingerprint_words_from_pcm(
+    samples: Vec<i16>,
+    sample_rate: u32,
+    channels: u32,
+) -> Result<Vec<u32>, String> {
+    let mut printer = Fingerprinter::new(&Configuration::preset_test2());
+    printer
+        .start(sample_rate, channels)
+        .map_err(|e| format!("Failed to start printer: {:?}", e))?;
+    printer.consume(&samples);
+    printer.finish();
+
+    Ok(printer.fingerprint().to_vec())
 }
 
 #[flutter_rust_bridge::frb(sync)]
