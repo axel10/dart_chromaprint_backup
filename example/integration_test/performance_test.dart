@@ -26,13 +26,14 @@ void main() {
     final samples = ChromaprintPreprocessor.decodeLittleEndianPcm(
       Uint8List.fromList(bytes),
     );
+    final pipeline = ChromaprintPipeline();
 
     final dartWordResult = await _benchmark<Uint32List>(
       label: 'dart_words',
       warmupRuns: warmupRuns,
       measuredRuns: measuredRuns,
       body: () {
-        return fingerprintWordsFromInt16Pcm(
+        return pipeline.fingerprintWordsFromInt16Pcm(
           samples: samples,
           sampleRate: sampleRate,
           channels: channels,
@@ -60,7 +61,7 @@ void main() {
       warmupRuns: warmupRuns,
       measuredRuns: measuredRuns,
       body: () {
-        return fingerprintStringFromInt16Pcm(
+        return pipeline.fingerprintStringFromInt16Pcm(
           samples: samples,
           sampleRate: sampleRate,
           channels: channels,

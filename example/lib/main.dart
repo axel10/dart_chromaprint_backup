@@ -34,6 +34,7 @@ class _HomePageState extends State<HomePage> {
   static const int _sampleRate = 44100;
   static const int _channels = 2;
   static const int _benchmarkIterations = 100;
+  final ChromaprintPipeline _pipeline = ChromaprintPipeline();
 
   bool _isLoading = false;
   bool _isBenchmarking = false;
@@ -73,7 +74,7 @@ class _HomePageState extends State<HomePage> {
       final samples = ChromaprintPreprocessor.decodeLittleEndianPcm(
         Uint8List.fromList(bytes),
       );
-      final fingerprint = fingerprintStringFromInt16Pcm(
+      final fingerprint = _pipeline.fingerprintStringFromInt16Pcm(
         samples: samples,
         sampleRate: _sampleRate,
         channels: _channels,
@@ -119,7 +120,7 @@ class _HomePageState extends State<HomePage> {
       final dartResult = await _benchmark<String>(
         iterations: _benchmarkIterations,
         body: () {
-          return fingerprintStringFromInt16Pcm(
+          return _pipeline.fingerprintStringFromInt16Pcm(
             samples: samples,
             sampleRate: _sampleRate,
             channels: _channels,

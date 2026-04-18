@@ -225,23 +225,16 @@ class ChromaprintRollingIntegralImage {
   int get rows => _rows;
 
   void addRow(List<double> row) {
-    if (_columns == 0) {
-      _columns = row.length;
-      _data = Float64List(_maxRows * _columns);
-    }
+    addRowSlice(row, 0, row.length);
+  }
 
-    if (row.length != _columns) {
-      throw ArgumentError.value(
-        row.length,
-        'row.length',
-        'Row width must stay constant.',
-      );
-    }
+  void addRowSlice(List<double> row, int start, int length) {
+    _ensureColumns(length);
 
     var sum = 0.0;
     final rowIndex = _rowOffset(_rows);
     for (var i = 0; i < _columns; i++) {
-      sum += row[i];
+      sum += row[start + i];
       _data[rowIndex + i] = sum;
     }
 
@@ -253,6 +246,21 @@ class ChromaprintRollingIntegralImage {
     }
 
     _rows += 1;
+  }
+
+  void _ensureColumns(int columns) {
+    if (_columns == 0) {
+      _columns = columns;
+      _data = Float64List(_maxRows * _columns);
+    }
+
+    if (columns != _columns) {
+      throw ArgumentError.value(
+        columns,
+        'length',
+        'Row width must stay constant.',
+      );
+    }
   }
 
   double area(int r1, int c1, int r2, int c2) {
@@ -286,6 +294,10 @@ class ChromaprintRollingIntegralImage {
     _columns = 0;
   }
 
+  void clearRows() {
+    _rows = 0;
+  }
+
   int _rowOffset(int row) => (row % _maxRows) * _columns;
 }
 
@@ -311,21 +323,23 @@ class ChromaprintFingerprintCalculator {
       );
     }
 
-    _image.reset();
-    final output = <int>[];
+    final frameCount = flattenedChroma.length ~/ chromaprintNumBands;
+    final output = Uint32List(math.max(0, frameCount - maxFilterWidth + 1));
+    _image.clearRows();
+    var writeIndex = 0;
     for (
       var offset = 0;
       offset < flattenedChroma.length;
       offset += chromaprintNumBands
     ) {
-      _image.addRow(
-        flattenedChroma.sublist(offset, offset + chromaprintNumBands),
-      );
+      _image.addRowSlice(flattenedChroma, offset, chromaprintNumBands);
       if (_image.rows >= maxFilterWidth) {
-        output.add(_calculateSubfingerprint(_image.rows - maxFilterWidth));
+        output[writeIndex++] = _calculateSubfingerprint(
+          _image.rows - maxFilterWidth,
+        );
       }
     }
-    return Uint32List.fromList(output);
+    return output;
   }
 
   int _calculateSubfingerprint(int offset) {

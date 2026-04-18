@@ -25,6 +25,8 @@ class ChromaprintFft {
         'frameOverlap must be smaller than frameSize.',
       );
     }
+    _fftBuffer = Float64x2List(frameSize);
+    _fftBufferData = Float64List.view(_fftBuffer.buffer);
   }
 
   final int frameSize;
@@ -32,6 +34,8 @@ class ChromaprintFft {
   final int frameStride;
   final FFT _fft;
   final Float64List _window;
+  late final Float64x2List _fftBuffer;
+  late final Float64List _fftBufferData;
 
   int get spectrumBins => frameSize ~/ 2 + 1;
 
@@ -45,14 +49,15 @@ class ChromaprintFft {
       frameStart + frameSize <= monoSamples.length;
       frameStart += frameStride
     ) {
-      final windowed = Float64List(frameSize);
       for (var i = 0; i < frameSize; i++) {
-        windowed[i] = monoSamples[frameStart + i] * _window[i];
+        final bufferOffset = i << 1;
+        _fftBufferData[bufferOffset] = monoSamples[frameStart + i] * _window[i];
+        _fftBufferData[bufferOffset + 1] = 0.0;
       }
 
-      final spectrum = _fft.realFft(windowed);
+      _fft.inPlaceFft(_fftBuffer);
       for (var i = 0; i < frameSize ~/ 2; i++) {
-        final value = spectrum[i];
+        final value = _fftBuffer[i];
         output[writeOffset++] = value.x * value.x + value.y * value.y;
       }
 

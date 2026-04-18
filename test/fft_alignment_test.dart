@@ -52,7 +52,7 @@ void main() {
     );
 
     final fft = ChromaprintFft();
-    final dartSpectrum = fft.transformFlattened(_toDoubleList(processed));
+    final dartSpectrum = fft.transformFlattened(processed);
 
     expect(dartSpectrum.length, rustSpectrum.length);
 
@@ -71,6 +71,3 @@ void main() {
     expect(meanAbsDiff, lessThan(1e-8));
   });
 }
-
-List<double> _toDoubleList(List<double> samples) =>
-    samples.toList(growable: false);
