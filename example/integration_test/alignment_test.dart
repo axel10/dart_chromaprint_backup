@@ -1,3 +1,6 @@
+import 'dart:io';
+import 'dart:typed_data';
+
 import 'package:dart_chromaprint/dart_chromaprint.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:integration_test/integration_test.dart';
@@ -98,6 +101,28 @@ void main() {
       path: path,
       sampleRate: sampleRate,
       channels: channels,
+    );
+
+    expect(fingerprint, rustFingerprint);
+  });
+
+  test('pure Dart preprocessing + fingerprint matches Rust baseline', () {
+    const path = '../test/test_decoded.pcm';
+    final bytes = File(path).readAsBytesSync();
+    final samples = ChromaprintPreprocessor.decodeLittleEndianPcm(
+      Uint8List.fromList(bytes),
+    );
+
+    final fingerprint = fingerprintWordsFromInt16Pcm(
+      samples: samples,
+      sampleRate: 44100,
+      channels: 2,
+    );
+
+    final rustFingerprint = getFingerprintWordsBaseline(
+      path: path,
+      sampleRate: 44100,
+      channels: 2,
     );
 
     expect(fingerprint, rustFingerprint);
