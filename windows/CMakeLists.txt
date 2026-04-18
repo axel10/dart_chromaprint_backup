@@ -16,5 +16,10 @@ apply_cargokit(${PROJECT_NAME} ../rust dart_chromaprint "")
 # external build triggered from this build file.
 set(dart_chromaprint_bundled_libraries
   "${${PROJECT_NAME}_cargokit_lib}"
-  PARENT_SCOPE
 )
+if (NOT CMAKE_BINARY_DIR STREQUAL CMAKE_CURRENT_BINARY_DIR OR NOT CMAKE_SOURCE_DIR STREQUAL CMAKE_CURRENT_SOURCE_DIR)
+  set(dart_chromaprint_bundled_libraries
+    "${dart_chromaprint_bundled_libraries}"
+    PARENT_SCOPE
+  )
+endif()
