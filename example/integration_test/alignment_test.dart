@@ -127,6 +127,60 @@ void main() {
 
     expect(fingerprint, rustFingerprint);
   });
+
+  test('compressed fingerprint string matches Rust baseline', () async {
+    const path = '../test/test_decoded.pcm';
+    final bytes = File(path).readAsBytesSync();
+    final samples = ChromaprintPreprocessor.decodeLittleEndianPcm(
+      Uint8List.fromList(bytes),
+    );
+
+    final fingerprint = fingerprintStringFromInt16Pcm(
+      samples: samples,
+      sampleRate: 44100,
+      channels: 2,
+    );
+
+    final rustFingerprint = await getFingerprintRaw(
+      path: path,
+      sampleRate: 44100,
+      channels: 2,
+    );
+
+    expect(fingerprint, rustFingerprint);
+  });
+
+  test('WAV bytes and file APIs match Rust compressed fingerprint', () async {
+    const pcmPath = '../test/test_decoded.pcm';
+    final pcmBytes = File(pcmPath).readAsBytesSync();
+    final wavBytes = _buildPcm16Wav(
+      pcmBytes: pcmBytes,
+      sampleRate: 44100,
+      channels: 2,
+      bitsPerSample: 16,
+    );
+
+    final fromBytes = fingerprintStringFromWavBytes(wavBytes);
+
+    final tempDir = await Directory.systemTemp.createTemp('chromaprint_wav_');
+    final wavPath = '${tempDir.path}${Platform.pathSeparator}fixture.wav';
+    await File(wavPath).writeAsBytes(wavBytes);
+    try {
+      final fromFile = await fingerprintStringFromWavFile(wavPath);
+      final rustFingerprint = await getFingerprintRaw(
+        path: pcmPath,
+        sampleRate: 44100,
+        channels: 2,
+      );
+
+      expect(fromBytes, rustFingerprint);
+      expect(fromFile, rustFingerprint);
+    } finally {
+      if (tempDir.existsSync()) {
+        tempDir.deleteSync(recursive: true);
+      }
+    }
+  });
 }
 
 void _expectClose(
@@ -150,4 +204,44 @@ void _expectClose(
 
   expect(actualMax, lessThan(maxAbsDiff));
   expect(actualMean, lessThan(meanAbsDiff));
+}
+
+Uint8List _buildPcm16Wav({
+  required List<int> pcmBytes,
+  required int sampleRate,
+  required int channels,
+  required int bitsPerSample,
+}) {
+  final dataSize = pcmBytes.length;
+  final byteRate = sampleRate * channels * (bitsPerSample ~/ 8);
+  final blockAlign = channels * (bitsPerSample ~/ 8);
+  final fileSize = 36 + dataSize;
+
+  final bytes = BytesBuilder(copy: false)
+    ..add('RIFF'.codeUnits)
+    ..add(_uint32le(fileSize))
+    ..add('WAVE'.codeUnits)
+    ..add('fmt '.codeUnits)
+    ..add(_uint32le(16))
+    ..add(_uint16le(1))
+    ..add(_uint16le(channels))
+    ..add(_uint32le(sampleRate))
+    ..add(_uint32le(byteRate))
+    ..add(_uint16le(blockAlign))
+    ..add(_uint16le(bitsPerSample))
+    ..add('data'.codeUnits)
+    ..add(_uint32le(dataSize))
+    ..add(pcmBytes);
+
+  return bytes.takeBytes();
+}
+
+Uint8List _uint16le(int value) {
+  final data = ByteData(2)..setUint16(0, value, Endian.little);
+  return data.buffer.asUint8List();
+}
+
+Uint8List _uint32le(int value) {
+  final data = ByteData(4)..setUint32(0, value, Endian.little);
+  return data.buffer.asUint8List();
 }
