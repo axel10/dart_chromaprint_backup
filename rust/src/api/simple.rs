@@ -20,6 +20,10 @@ const DEFAULT_FRAME_SIZE: usize = 4096;
 const DEFAULT_FRAME_OVERLAP: usize = DEFAULT_FRAME_SIZE - DEFAULT_FRAME_SIZE / 3;
 const DEFAULT_FRAME_STRIDE: usize = DEFAULT_FRAME_SIZE - DEFAULT_FRAME_OVERLAP;
 const DEFAULT_SPECTRUM_BINS: usize = 1 + DEFAULT_FRAME_SIZE / 2;
+const DEFAULT_CHROMA_BANDS: usize = 12;
+const DEFAULT_MIN_FREQ: u32 = 28;
+const DEFAULT_MAX_FREQ: u32 = 3520;
+const DEFAULT_CHROMA_FILTER_COEFFICIENTS: [f64; 5] = [0.25, 0.75, 1.0, 0.75, 0.25];
 
 #[flutter_rust_bridge::frb(sync)]
 pub fn greet(name: String) -> String {
@@ -133,6 +137,48 @@ pub fn get_fft_spectrum_baseline(
     let samples = read_pcm_i16(&path)?;
     let processed = preprocess_pcm_samples(&samples, sample_rate, channels)?;
     Ok(compute_fft_spectrum(&processed))
+}
+
+#[flutter_rust_bridge::frb(sync)]
+pub fn get_chroma_baseline(
+    path: String,
+    sample_rate: u32,
+    channels: u32,
+) -> Result<Vec<f64>, String> {
+    let samples = read_pcm_i16(&path)?;
+    let processed = preprocess_pcm_samples(&samples, sample_rate, channels)?;
+    let spectrum = compute_fft_spectrum(&processed);
+    Ok(compute_chroma(&spectrum, false))
+}
+
+#[flutter_rust_bridge::frb(sync)]
+pub fn get_filtered_chroma_baseline(
+    path: String,
+    sample_rate: u32,
+    channels: u32,
+) -> Result<Vec<f64>, String> {
+    let samples = read_pcm_i16(&path)?;
+    let processed = preprocess_pcm_samples(&samples, sample_rate, channels)?;
+    let spectrum = compute_fft_spectrum(&processed);
+    let chroma = compute_chroma(&spectrum, false);
+    Ok(apply_chroma_filter(
+        &chroma,
+        &DEFAULT_CHROMA_FILTER_COEFFICIENTS,
+    ))
+}
+
+#[flutter_rust_bridge::frb(sync)]
+pub fn get_normalized_chroma_baseline(
+    path: String,
+    sample_rate: u32,
+    channels: u32,
+) -> Result<Vec<f64>, String> {
+    let samples = read_pcm_i16(&path)?;
+    let processed = preprocess_pcm_samples(&samples, sample_rate, channels)?;
+    let spectrum = compute_fft_spectrum(&processed);
+    let chroma = compute_chroma(&spectrum, false);
+    let filtered = apply_chroma_filter(&chroma, &DEFAULT_CHROMA_FILTER_COEFFICIENTS);
+    Ok(normalize_chroma_vectors(&filtered, 0.01))
 }
 
 fn get_fingerprint_words(
@@ -366,6 +412,130 @@ fn compute_fft_spectrum(samples: &[f64]) -> Vec<f64> {
     }
 
     output
+}
+
+fn compute_chroma(spectrum: &[f64], interpolate: bool) -> Vec<f64> {
+    if spectrum.is_empty() {
+        return Vec::new();
+    }
+
+    assert_eq!(spectrum.len() % DEFAULT_SPECTRUM_BINS, 0);
+    let frame_count = spectrum.len() / DEFAULT_SPECTRUM_BINS;
+    let mut output = vec![0.0; frame_count * DEFAULT_CHROMA_BANDS];
+    let mut notes = vec![0u8; DEFAULT_FRAME_SIZE].into_boxed_slice();
+    let mut notes_frac = vec![0.0; DEFAULT_FRAME_SIZE].into_boxed_slice();
+
+    let min_index = freq_to_index(DEFAULT_MIN_FREQ, DEFAULT_FRAME_SIZE, DEFAULT_TARGET_SAMPLE_RATE).max(1);
+    let max_index = freq_to_index(DEFAULT_MAX_FREQ, DEFAULT_FRAME_SIZE, DEFAULT_TARGET_SAMPLE_RATE)
+        .min(DEFAULT_FRAME_SIZE / 2);
+
+    for i in min_index..max_index {
+        let freq = index_to_freq(i, DEFAULT_FRAME_SIZE, DEFAULT_TARGET_SAMPLE_RATE);
+        let octave = freq_to_octave(freq);
+        let note = DEFAULT_CHROMA_BANDS as f64 * (octave - octave.floor());
+        notes[i] = note.floor() as u8;
+        notes_frac[i] = note - note.floor();
+    }
+
+    for frame in 0..frame_count {
+        let spectrum_offset = frame * DEFAULT_SPECTRUM_BINS;
+        let chroma_offset = frame * DEFAULT_CHROMA_BANDS;
+        for i in min_index..max_index {
+            let energy = spectrum[spectrum_offset + i];
+            let note = notes[i] as usize;
+            if interpolate {
+                let mut note2 = note;
+                let mut a = 1.0;
+                if notes_frac[i] < 0.5 {
+                    note2 = (note + DEFAULT_CHROMA_BANDS - 1) % DEFAULT_CHROMA_BANDS;
+                    a = 0.5 + notes_frac[i];
+                }
+                if notes_frac[i] > 0.5 {
+                    note2 = (note + 1) % DEFAULT_CHROMA_BANDS;
+                    a = 1.5 - notes_frac[i];
+                }
+                output[chroma_offset + note] += energy * a;
+                output[chroma_offset + note2] += energy * (1.0 - a);
+            } else {
+                output[chroma_offset + note] += energy;
+            }
+        }
+    }
+
+    output
+}
+
+fn apply_chroma_filter(chroma: &[f64], coefficients: &[f64]) -> Vec<f64> {
+    if chroma.is_empty() {
+        return Vec::new();
+    }
+
+    assert_eq!(chroma.len() % DEFAULT_CHROMA_BANDS, 0);
+    let frame_count = chroma.len() / DEFAULT_CHROMA_BANDS;
+    if frame_count < coefficients.len() {
+        return Vec::new();
+    }
+
+    let mut output =
+        Vec::with_capacity((frame_count - coefficients.len() + 1) * DEFAULT_CHROMA_BANDS);
+    let mut buffer = [[0.0; DEFAULT_CHROMA_BANDS]; 8];
+    let mut result = [0.0; DEFAULT_CHROMA_BANDS];
+    let mut buffer_offset = 0usize;
+    let mut buffer_size = 1usize;
+
+    for frame in 0..frame_count {
+        let input_offset = frame * DEFAULT_CHROMA_BANDS;
+        buffer[buffer_offset].copy_from_slice(&chroma[input_offset..input_offset + DEFAULT_CHROMA_BANDS]);
+        buffer_offset = (buffer_offset + 1) % buffer.len();
+
+        if buffer_size >= coefficients.len() {
+            let offset = (buffer_offset + buffer.len() - coefficients.len()) % buffer.len();
+            result.fill(0.0);
+            for band in 0..DEFAULT_CHROMA_BANDS {
+                for j in 0..coefficients.len() {
+                    result[band] += buffer[(offset + j) % buffer.len()][band] * coefficients[j];
+                }
+            }
+            output.extend_from_slice(&result);
+        } else {
+            buffer_size += 1;
+        }
+    }
+
+    output
+}
+
+fn normalize_chroma_vectors(chroma: &[f64], eps: f64) -> Vec<f64> {
+    if chroma.is_empty() {
+        return Vec::new();
+    }
+
+    assert_eq!(chroma.len() % DEFAULT_CHROMA_BANDS, 0);
+    let mut output = chroma.to_vec();
+    for frame in output.chunks_exact_mut(DEFAULT_CHROMA_BANDS) {
+        let norm = frame.iter().fold(0.0, |acc, x| acc + x.powi(2)).sqrt();
+        if norm < eps {
+            frame.fill(0.0);
+        } else {
+            for value in frame {
+                *value /= norm;
+            }
+        }
+    }
+    output
+}
+
+fn freq_to_index(freq: u32, frame_size: usize, sample_rate: u32) -> usize {
+    (frame_size as f64 * freq as f64 / sample_rate as f64).round() as usize
+}
+
+fn index_to_freq(index: usize, frame_size: usize, sample_rate: u32) -> f64 {
+    index as f64 * sample_rate as f64 / frame_size as f64
+}
+
+fn freq_to_octave(freq: f64) -> f64 {
+    let base = 440.0 / 16.0;
+    f64::log2(freq / base)
 }
 
 fn make_hamming_window(size: usize, scale: f64) -> Vec<f64> {

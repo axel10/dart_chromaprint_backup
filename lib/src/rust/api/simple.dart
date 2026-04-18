@@ -6,7 +6,7 @@
 import '../frb_generated.dart';
 import 'package:flutter_rust_bridge/flutter_rust_bridge_for_generated.dart';
 
-// These functions are ignored because they are not marked as `pub`: `compute_fft_spectrum`, `flush_preprocess_buffer`, `get_fingerprint_words`, `make_hamming_window`, `preprocess_pcm_samples`, `read_pcm_i16`
+// These functions are ignored because they are not marked as `pub`: `apply_chroma_filter`, `compute_chroma`, `compute_fft_spectrum`, `flush_preprocess_buffer`, `freq_to_index`, `freq_to_octave`, `get_fingerprint_words`, `index_to_freq`, `make_hamming_window`, `normalize_chroma_vectors`, `preprocess_pcm_samples`, `read_pcm_i16`
 
 String greet({required String name}) =>
     RustLib.instance.api.crateApiSimpleGreet(name: name);
@@ -41,6 +41,36 @@ Float64List getFftSpectrumBaseline({
   required int sampleRate,
   required int channels,
 }) => RustLib.instance.api.crateApiSimpleGetFftSpectrumBaseline(
+  path: path,
+  sampleRate: sampleRate,
+  channels: channels,
+);
+
+Float64List getChromaBaseline({
+  required String path,
+  required int sampleRate,
+  required int channels,
+}) => RustLib.instance.api.crateApiSimpleGetChromaBaseline(
+  path: path,
+  sampleRate: sampleRate,
+  channels: channels,
+);
+
+Float64List getFilteredChromaBaseline({
+  required String path,
+  required int sampleRate,
+  required int channels,
+}) => RustLib.instance.api.crateApiSimpleGetFilteredChromaBaseline(
+  path: path,
+  sampleRate: sampleRate,
+  channels: channels,
+);
+
+Float64List getNormalizedChromaBaseline({
+  required String path,
+  required int sampleRate,
+  required int channels,
+}) => RustLib.instance.api.crateApiSimpleGetNormalizedChromaBaseline(
   path: path,
   sampleRate: sampleRate,
   channels: channels,

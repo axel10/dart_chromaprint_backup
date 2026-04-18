@@ -66,7 +66,7 @@ class RustLib extends BaseEntrypoint<RustLibApi, RustLibApiImpl, RustLibWire> {
   String get codegenVersion => '2.11.1';
 
   @override
-  int get rustContentHash => 370243819;
+  int get rustContentHash => 1318132272;
 
   static const kDefaultExternalLibraryLoaderConfig =
       ExternalLibraryLoaderConfig(
@@ -82,13 +82,31 @@ abstract class RustLibApi extends BaseApi {
     double? maxSeconds,
   });
 
+  Float64List crateApiSimpleGetChromaBaseline({
+    required String path,
+    required int sampleRate,
+    required int channels,
+  });
+
   Float64List crateApiSimpleGetFftSpectrumBaseline({
     required String path,
     required int sampleRate,
     required int channels,
   });
 
+  Float64List crateApiSimpleGetFilteredChromaBaseline({
+    required String path,
+    required int sampleRate,
+    required int channels,
+  });
+
   Future<String> crateApiSimpleGetFingerprintRaw({
+    required String path,
+    required int sampleRate,
+    required int channels,
+  });
+
+  Float64List crateApiSimpleGetNormalizedChromaBaseline({
     required String path,
     required int sampleRate,
     required int channels,
@@ -143,7 +161,7 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
   );
 
   @override
-  Float64List crateApiSimpleGetFftSpectrumBaseline({
+  Float64List crateApiSimpleGetChromaBaseline({
     required String path,
     required int sampleRate,
     required int channels,
@@ -156,6 +174,38 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
           sse_encode_u_32(sampleRate, serializer);
           sse_encode_u_32(channels, serializer);
           return pdeCallFfi(generalizedFrbRustBinding, serializer, funcId: 2)!;
+        },
+        codec: SseCodec(
+          decodeSuccessData: sse_decode_list_prim_f_64_strict,
+          decodeErrorData: sse_decode_String,
+        ),
+        constMeta: kCrateApiSimpleGetChromaBaselineConstMeta,
+        argValues: [path, sampleRate, channels],
+        apiImpl: this,
+      ),
+    );
+  }
+
+  TaskConstMeta get kCrateApiSimpleGetChromaBaselineConstMeta =>
+      const TaskConstMeta(
+        debugName: "get_chroma_baseline",
+        argNames: ["path", "sampleRate", "channels"],
+      );
+
+  @override
+  Float64List crateApiSimpleGetFftSpectrumBaseline({
+    required String path,
+    required int sampleRate,
+    required int channels,
+  }) {
+    return handler.executeSync(
+      SyncTask(
+        callFfi: () {
+          final serializer = SseSerializer(generalizedFrbRustBinding);
+          sse_encode_String(path, serializer);
+          sse_encode_u_32(sampleRate, serializer);
+          sse_encode_u_32(channels, serializer);
+          return pdeCallFfi(generalizedFrbRustBinding, serializer, funcId: 3)!;
         },
         codec: SseCodec(
           decodeSuccessData: sse_decode_list_prim_f_64_strict,
@@ -175,6 +225,38 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
       );
 
   @override
+  Float64List crateApiSimpleGetFilteredChromaBaseline({
+    required String path,
+    required int sampleRate,
+    required int channels,
+  }) {
+    return handler.executeSync(
+      SyncTask(
+        callFfi: () {
+          final serializer = SseSerializer(generalizedFrbRustBinding);
+          sse_encode_String(path, serializer);
+          sse_encode_u_32(sampleRate, serializer);
+          sse_encode_u_32(channels, serializer);
+          return pdeCallFfi(generalizedFrbRustBinding, serializer, funcId: 4)!;
+        },
+        codec: SseCodec(
+          decodeSuccessData: sse_decode_list_prim_f_64_strict,
+          decodeErrorData: sse_decode_String,
+        ),
+        constMeta: kCrateApiSimpleGetFilteredChromaBaselineConstMeta,
+        argValues: [path, sampleRate, channels],
+        apiImpl: this,
+      ),
+    );
+  }
+
+  TaskConstMeta get kCrateApiSimpleGetFilteredChromaBaselineConstMeta =>
+      const TaskConstMeta(
+        debugName: "get_filtered_chroma_baseline",
+        argNames: ["path", "sampleRate", "channels"],
+      );
+
+  @override
   Future<String> crateApiSimpleGetFingerprintRaw({
     required String path,
     required int sampleRate,
@@ -190,7 +272,7 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
           pdeCallFfi(
             generalizedFrbRustBinding,
             serializer,
-            funcId: 3,
+            funcId: 5,
             port: port_,
           );
         },
@@ -212,6 +294,38 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
       );
 
   @override
+  Float64List crateApiSimpleGetNormalizedChromaBaseline({
+    required String path,
+    required int sampleRate,
+    required int channels,
+  }) {
+    return handler.executeSync(
+      SyncTask(
+        callFfi: () {
+          final serializer = SseSerializer(generalizedFrbRustBinding);
+          sse_encode_String(path, serializer);
+          sse_encode_u_32(sampleRate, serializer);
+          sse_encode_u_32(channels, serializer);
+          return pdeCallFfi(generalizedFrbRustBinding, serializer, funcId: 6)!;
+        },
+        codec: SseCodec(
+          decodeSuccessData: sse_decode_list_prim_f_64_strict,
+          decodeErrorData: sse_decode_String,
+        ),
+        constMeta: kCrateApiSimpleGetNormalizedChromaBaselineConstMeta,
+        argValues: [path, sampleRate, channels],
+        apiImpl: this,
+      ),
+    );
+  }
+
+  TaskConstMeta get kCrateApiSimpleGetNormalizedChromaBaselineConstMeta =>
+      const TaskConstMeta(
+        debugName: "get_normalized_chroma_baseline",
+        argNames: ["path", "sampleRate", "channels"],
+      );
+
+  @override
   Float64List crateApiSimpleGetProcessedPcm({
     required String path,
     required int sampleRate,
@@ -224,7 +338,7 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
           sse_encode_String(path, serializer);
           sse_encode_u_32(sampleRate, serializer);
           sse_encode_u_32(channels, serializer);
-          return pdeCallFfi(generalizedFrbRustBinding, serializer, funcId: 4)!;
+          return pdeCallFfi(generalizedFrbRustBinding, serializer, funcId: 7)!;
         },
         codec: SseCodec(
           decodeSuccessData: sse_decode_list_prim_f_64_strict,
@@ -250,7 +364,7 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
         callFfi: () {
           final serializer = SseSerializer(generalizedFrbRustBinding);
           sse_encode_String(name, serializer);
-          return pdeCallFfi(generalizedFrbRustBinding, serializer, funcId: 5)!;
+          return pdeCallFfi(generalizedFrbRustBinding, serializer, funcId: 8)!;
         },
         codec: SseCodec(
           decodeSuccessData: sse_decode_String,
@@ -275,7 +389,7 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
           pdeCallFfi(
             generalizedFrbRustBinding,
             serializer,
-            funcId: 6,
+            funcId: 9,
             port: port_,
           );
         },
