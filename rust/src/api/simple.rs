@@ -1,11 +1,14 @@
+use base64::prelude::{Engine, BASE64_URL_SAFE_NO_PAD};
 use std::fs::File;
-use symphonia::core::audio::{SampleBuffer, Signal};
+use rusty_chromaprint::{Configuration, FingerprintCompressor, Fingerprinter};
 use symphonia::core::codecs::{DecoderOptions, CODEC_TYPE_NULL};
 use symphonia::core::errors::Error;
 use symphonia::core::formats::FormatOptions;
 use symphonia::core::io::MediaSourceStream;
 use symphonia::core::meta::MetadataOptions;
 use symphonia::core::probe::Hint;
+use std::io::Read;
+use symphonia::core::audio::SampleBuffer;
 
 #[flutter_rust_bridge::frb(sync)]
 pub fn greet(name: String) -> String {
@@ -68,7 +71,8 @@ pub fn get_audio_pcm(path: String, max_seconds: Option<f64>) -> Result<Vec<f32>,
         if total_samples_limit.is_none() {
             if let Some(secs) = max_seconds {
                 let spec = decoded.spec();
-                total_samples_limit = Some((secs * spec.rate as f64 * spec.channels.count() as f64) as usize);
+                let frame_count = (secs * spec.rate as f64).floor() as usize;
+                total_samples_limit = Some(frame_count * spec.channels.count());
             }
         }
 
@@ -77,7 +81,7 @@ pub fn get_audio_pcm(path: String, max_seconds: Option<f64>) -> Result<Vec<f32>,
             *decoded.spec(),
         );
         sample_buf.copy_interleaved_ref(decoded);
-        
+
         let new_samples = sample_buf.samples();
         if let Some(limit) = total_samples_limit {
             let current_len = samples.len();
@@ -92,6 +96,38 @@ pub fn get_audio_pcm(path: String, max_seconds: Option<f64>) -> Result<Vec<f32>,
     }
 
     Ok(samples)
+}
+
+#[flutter_rust_bridge::frb]
+pub fn get_fingerprint_raw(path: String, sample_rate: u32, channels: u32) -> Result<String, String> {
+    let fingerprint = get_fingerprint_words(path, sample_rate, channels)?;
+    let config = Configuration::preset_test2();
+    let compressor = FingerprintCompressor::from(&config);
+    let compressed = compressor.compress(&fingerprint);
+    Ok(BASE64_URL_SAFE_NO_PAD.encode(compressed))
+}
+
+fn get_fingerprint_words(
+    path: String,
+    sample_rate: u32,
+    channels: u32,
+) -> Result<Vec<u32>, String> {
+    let mut file = File::open(&path).map_err(|e| format!("Failed to open file: {}", e))?;
+    let mut data = Vec::new();
+    file.read_to_end(&mut data).map_err(|e| format!("Failed to read file: {}", e))?;
+
+    let samples: Vec<i16> = data
+        .chunks_exact(2)
+        .map(|chunk| i16::from_le_bytes([chunk[0], chunk[1]]))
+        .collect();
+
+    let mut printer = Fingerprinter::new(&Configuration::preset_test2());
+    printer.start(sample_rate, channels).map_err(|e| format!("Failed to start printer: {:?}", e))?;
+    printer.consume(&samples);
+    printer.finish();
+    
+    let fingerprint = printer.fingerprint();
+    Ok(fingerprint.to_vec())
 }
 
 #[flutter_rust_bridge::frb(init)]

@@ -37,6 +37,7 @@ class _HomePageState extends State<HomePage> {
   double _maxSeconds = 10.0; // Default to 10 seconds
   bool _isLoading = false;
   Float32List? _pcmData;
+  String? _fingerprint;
 
   Future<void> _pickAndProcessFile() async {
     final result = await FilePicker.pickFiles(
@@ -121,6 +122,53 @@ class _HomePageState extends State<HomePage> {
     }
   }
 
+  Future<void> _calculateFingerprint() async {
+    const pcmPath =
+        r'C:\Users\Administrator\Desktop\projects\player_project\dart_chromaprint\test\test_decoded.pcm';
+
+    if (!File(pcmPath).existsSync()) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Test file not found at C:\\...\\test_decoded.pcm'),
+            backgroundColor: Colors.orange,
+          ),
+        );
+      }
+      return;
+    }
+
+    setState(() {
+      _isLoading = true;
+      _fingerprint = null;
+    });
+
+    try {
+      final fp = await getFingerprintRaw(
+        path: pcmPath,
+        sampleRate: 44100,
+        channels: 2,
+      );
+      debugPrint('Calculated Fingerprint: $fp');
+      setState(() {
+        _fingerprint = fp;
+      });
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Error: $e'),
+            backgroundColor: Colors.red,
+          ),
+        );
+      }
+    } finally {
+      setState(() {
+        _isLoading = false;
+      });
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -181,6 +229,41 @@ class _HomePageState extends State<HomePage> {
                   style: ElevatedButton.styleFrom(
                     padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 12),
                     backgroundColor: Colors.blue.shade50,
+                  ),
+                ),
+              ],
+              const SizedBox(height: 24),
+              const Divider(),
+              const SizedBox(height: 16),
+              Text('Test Fingerprint', style: Theme.of(context).textTheme.titleLarge),
+              const SizedBox(height: 8),
+              ElevatedButton.icon(
+                onPressed: _isLoading ? null : _calculateFingerprint,
+                icon: const Icon(Icons.fingerprint),
+                label: const Text('Calculate Fingerprint (test_decoded.pcm)'),
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: Colors.purple.shade50,
+                  foregroundColor: Colors.purple,
+                ),
+              ),
+              if (_fingerprint != null) ...[
+                const SizedBox(height: 16),
+                Container(
+                  padding: const EdgeInsets.all(12),
+                  decoration: BoxDecoration(
+                    color: Colors.grey.shade100,
+                    borderRadius: BorderRadius.circular(8),
+                    border: Border.all(color: Colors.grey.shade300),
+                  ),
+                  height: 150,
+                  child: SingleChildScrollView(
+                    child: Text(
+                      _fingerprint!,
+                      style: const TextStyle(
+                        fontFamily: 'monospace',
+                        fontSize: 12,
+                      ),
+                    ),
                   ),
                 ),
               ],

@@ -6,6 +6,8 @@
 import '../frb_generated.dart';
 import 'package:flutter_rust_bridge/flutter_rust_bridge_for_generated.dart';
 
+// These functions are ignored because they are not marked as `pub`: `get_fingerprint_words`
+
 String greet({required String name}) =>
     RustLib.instance.api.crateApiSimpleGreet(name: name);
 
@@ -13,3 +15,13 @@ Float32List getAudioPcm({required String path, double? maxSeconds}) => RustLib
     .instance
     .api
     .crateApiSimpleGetAudioPcm(path: path, maxSeconds: maxSeconds);
+
+Future<String> getFingerprintRaw({
+  required String path,
+  required int sampleRate,
+  required int channels,
+}) => RustLib.instance.api.crateApiSimpleGetFingerprintRaw(
+  path: path,
+  sampleRate: sampleRate,
+  channels: channels,
+);
